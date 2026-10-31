@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Power Flow Camera</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<div id="app">
+  <div class="camera-view">
+    <video id="cameraVideo" autoplay playsinline muted></video>
+    <canvas id="previewCanvas"></canvas>
+
+    <div id="emptyState" class="empty-state">
+      <div class="camera-icon">📷</div>
+      <h1>Power Flow</h1>
+      <p>Tap to open camera</p>
+      <button id="startCameraBtn" class="start-btn">Start Camera</button>
+    </div>
+
+    <div class="top-bar">
+      <button id="settingsBtn" class="icon-btn" aria-label="Settings">⚙️</button>
+      <div id="modeBadge" class="mode-pill">PHOTO</div>
+      <div id="recordTimer" class="mode-pill record-dot hidden">● 00:00</div>
+    </div>
+
+    <div id="gridOverlay" class="grid hidden"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+    <div id="countdown" class="countdown hidden"></div>
+
+    <div class="zoom-controls">
+      <button id="zoomInBtn" class="zoom-btn" aria-label="Zoom in">+</button>
+      <div id="zoomLabel" class="zoom-label">1.0x</div>
+      <button id="zoomOutBtn" class="zoom-btn" aria-label="Zoom out">−</button>
+    </div>
+
+    <div class="bottom-area">
+      <div class="mode-row">
+        <button class="mode-btn active" data-mode="photo">PHOTO</button>
+        <button class="mode-btn" data-mode="video">VIDEO</button>
+      </div>
+      <div class="controls-row">
+        <button id="galleryBtn" class="side-btn" aria-label="Gallery"><span class="gallery-thumb"></span></button>
+        <button id="shutterBtn" class="shutter" aria-label="Capture"></button>
+        <button id="flipBtn" class="side-btn" aria-label="Flip">🔄</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="settingsSheet" class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <h2>Settings</h2>
+      <button id="closeSettingsBtn" class="done-btn">Done</button>
+    </div>
+    <div class="sheet-body">
+      <section>
+        <h3>Camera</h3>
+        <label>Resolution
+          <select id="resolutionSelect">
+            <option value="1920x1080">Full HD · 1080p</option>
+            <option value="1280x720">HD · 720p</option>
+            <option value="640x480">SD · 480p</option>
+          </select>
+        </label>
+        <label>Camera
+          <select id="cameraFacing">
+            <option value="environment">Back Camera</option>
+            <option value="user">Front Camera</option>
+          </select>
+        </label>
+        <label>Default Zoom <output id="defaultZoomOut">1.0x</output>
+          <input id="defaultZoom" type="range" min="1" max="3" step="0.1" value="1">
+        </label>
+        <label class="switch">Grid lines <input id="gridToggle" type="checkbox"></label>
+        <label class="switch">Mirror front camera <input id="mirrorToggle" type="checkbox" checked></label>
+        <label class="switch">Stabilization hint <input id="stabilizeHint" type="checkbox"></label>
+        <label>Timer
+          <select id="timerSelect">
+            <option value="0">Off</option>
+            <option value="3">3 seconds</option>
+            <option value="5">5 seconds</option>
+            <option value="10">10 seconds</option>
+          </select>
+        </label>
+        <label>Photo format
+          <select id="photoFormat">
+            <option value="png">PNG (best quality)</option>
+            <option value="jpeg">JPEG (smaller size)</option>
+          </select>
+        </label>
+      </section>
+      <section>
+        <h3>Watermarks</h3>
+        <label>Top-left logo <input id="logoLeft" type="file" accept="image/*"></label>
+        <label>Top-right logo <input id="logoRight" type="file" accept="image/*"></label>
+        <label>Bottom logo <input id="logoBottom" type="file" accept="image/*"></label>
+        <label>Logo size <output id="logoSizeOutput">18%</output>
+          <input id="logoSize" type="range" min="8" max="30" value="18">
+        </label>
+        <label class="switch">Show logos <input id="showLogos" type="checkbox" checked></label>
+      </section>
+      <section>
+        <h3>Announcement & Minister</h3>
+        <label>Announcement
+          <textarea id="announcementInput" maxlength="160">WELCOME TO POWER FLOW • JESUS IS LORD • GOD BLESS YOU</textarea>
+        </label>
+        <label>Minister
+          <input id="ministerInput" type="text" maxlength="60" value="MINISTERING: PASTOR EMMANUEL ANYANWU">
+        </label>
+        <label>Text size <output id="textSizeOutput">15px</output>
+          <input id="textSize" type="range" min="10" max="24" value="15">
+        </label>
+        <label>Text color <input id="textColor" type="color" value="#ffffff"></label>
+        <label>Banner color <input id="bannerColor" type="color" value="#071b52"></label>
+        <label class="switch">Show announcement <input id="showAnnouncement" type="checkbox" checked></label>
+        <label class="switch">Show minister <input id="showMinister" type="checkbox" checked></label>
+      </section>
+      <section>
+        <h3>Theme</h3>
+        <label>Theme
+          <select id="themeSelect">
+            <option value="gold">Gold</option>
+            <option value="blue">Blue</option>
+            <option value="purple">Purple</option>
+            <option value="green">Green</option>
+          </select>
+        </label>
+      </section>
+      <button id="saveSettingsBtn" class="save-btn">Save Settings</button>
+      <button id="resetSettingsBtn" class="reset-btn">Restore Defaults</button>
+    </div>
+  </div>
+
+  <div id="gallerySheet" class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <h2>Captures</h2>
+      <button id="closeGalleryBtn" class="done-btn">Close</button>
+    </div>
+    <div id="galleryList" class="sheet-body gallery-grid">
+      <p class="muted">No captures yet this session.</p>
+    </div>
+  </div>
+
+  <div id="editorView" class="editor hidden">
+    <div class="editor-top">
+      <button id="cancelEditBtn" class="done-btn">Cancel</button>
+      <h2>Edit</h2>
+      <button id="saveEditBtn" class="done-btn">Save</button>
+    </div>
+    <div class="editor-canvas-wrap"><canvas id="editorCanvas"></canvas></div>
+    <div class="editor-tools">
+      <div class="filter-scroll" id="filterRow">
+        <button class="filter-chip active" data-filter="none">Original</button>
+        <button class="filter-chip" data-filter="vivid">Vivid</button>
+        <button class="filter-chip" data-filter="warm">Warm</button>
+        <button class="filter-chip" data-filter="cool">Cool</button>
+        <button class="filter-chip" data-filter="bw">Mono</button>
+        <button class="filter-chip" data-filter="noir">Noir</button>
+        <button class="filter-chip" data-filter="vintage">Vintage</button>
+        <button class="filter-chip" data-filter="fade">Fade</button>
+        <button class="filter-chip" data-filter="dramatic">Dramatic</button>
+        <button class="filter-chip" data-filter="golden">Golden</button>
+        <button class="filter-chip" data-filter="cinematic">Cinematic</button>
+      </div>
+
+      <div class="tool-tabs">
+        <button class="tool-tab active" data-tab="adjust">Adjust</button>
+        <button class="tool-tab" data-tab="crop">Crop</button>
+        <button class="tool-tab" data-tab="text">Text</button>
+      </div>
+
+      <div id="tab-adjust" class="tool-panel">
+        <label>Brightness <output id="brightOut">100%</output>
+          <input id="brightSlider" type="range" min="40" max="160" value="100">
+        </label>
+        <label>Contrast <output id="contrastOut">100%</output>
+          <input id="contrastSlider" type="range" min="40" max="160" value="100">
+        </label>
+        <label>Saturation <output id="satOut">100%</output>
+          <input id="satSlider" type="range" min="0" max="200" value="100">
+        </label>
+        <label>Warmth <output id="warmOut">0</output>
+          <input id="warmSlider" type="range" min="-50" max="50" value="0">
+        </label>
+        <label>Vignette <output id="vignetteOut">0%</output>
+          <input id="vignetteSlider" type="range" min="0" max="80" value="0">
+        </label>
+      </div>
+
+      <div id="tab-crop" class="tool-panel hidden">
+        <div class="crop-buttons">
+          <button class="crop-btn" data-ratio="original">Original</button>
+          <button class="crop-btn" data-ratio="1:1">Square</button>
+          <button class="crop-btn" data-ratio="4:5">4:5</button>
+          <button class="crop-btn" data-ratio="16:9">16:9</button>
+        </div>
+        <div class="rotate-row">
+          <button id="rotateLeftBtn" class="action-btn">↺ Rotate Left</button>
+          <button id="rotateRightBtn" class="action-btn">↻ Rotate Right</button>
+        </div>
+      </div>
+
+      <div id="tab-text" class="tool-panel hidden">
+        <label>Announcement size <output id="annSizeOut">15</output>
+          <input id="annSizeSlider" type="range" min="10" max="28" value="15">
+        </label>
+        <label>Minister size <output id="minSizeOut">14</output>
+          <input id="minSizeSlider" type="range" min="10" max="26" value="14">
+        </label>
+        <label class="switch">Show announcement <input id="editShowAnn" type="checkbox" checked></label>
+        <label class="switch">Show minister <input id="editShowMin" type="checkbox" checked></label>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="./script.js"></script>
+</body>
+</html>
