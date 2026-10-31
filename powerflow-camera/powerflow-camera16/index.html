@@ -6,6 +6,11 @@
 <meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Power Flow">
+<meta name="description" content="Power Flow Camera Studio">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./camera-icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="./camera-icon-192.png">
 <title>Power Flow Camera</title>
 <link rel="stylesheet" href="./style.css">
 </head>
@@ -23,6 +28,7 @@
     </div>
 
     <div class="top-bar">
+      <button id="installBtn" class="icon-btn hidden" aria-label="Install app" title="Install app">⇩</button>
       <button id="settingsBtn" class="icon-btn" aria-label="Settings">⚙️</button>
       <div id="modeBadge" class="mode-pill">PHOTO</div>
       <div id="recordTimer" class="mode-pill record-dot hidden">● 00:00</div>
@@ -172,6 +178,7 @@
         <button class="tool-tab active" data-tab="adjust">Adjust</button>
         <button class="tool-tab" data-tab="crop">Crop</button>
         <button class="tool-tab" data-tab="text">Text</button>
+        <button class="tool-tab" data-tab="more">More</button>
       </div>
 
       <div id="tab-adjust" class="tool-panel">
@@ -215,10 +222,27 @@
         <label class="switch">Show announcement <input id="editShowAnn" type="checkbox" checked></label>
         <label class="switch">Show minister <input id="editShowMin" type="checkbox" checked></label>
       </div>
+
+      <div id="tab-more" class="tool-panel hidden">
+        <label class="switch">Flip horizontally <input id="flipHorizontal" type="checkbox"></label>
+        <label>Export quality <output id="qualityOut">90%</output>
+          <input id="qualitySlider" type="range" min="50" max="100" value="90">
+        </label>
+        <button id="resetEditBtn" class="action-btn">Reset edits</button>
+      </div>
     </div>
   </div>
 </div>
 
 <script src="./script.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js').catch(error => {
+        console.error('Offline support could not be enabled:', error);
+      });
+    });
+  }
+</script>
 </body>
 </html>

@@ -2,7 +2,8 @@ const $ = id => document.getElementById(id);
 const state = {
   stream: null, facing: 'environment', mode: 'photo', recording: false,
   mediaRecorder: null, recordedChunks: [], logos: { left: null, right: null, bottom: null },
-  settings: {}, captures: [], animationId: null, scrollOffset: 0, zoom: 1
+  settings: {}, captures: [], animationId: null, scrollOffset: 0, zoom: 1,
+  recordTimerId: null
 };
 const defaults = {
   resolution: '1920x1080', facing: 'environment', grid: false, mirror: true, timer: 0,
@@ -14,12 +15,25 @@ const defaults = {
 };
 
 function loadSettings() {
-  const saved = localStorage.getItem('pf-camera-settings');
-  state.settings = saved ? { ...defaults, ...JSON.parse(saved) } : { ...defaults };
+  try {
+    const saved = localStorage.getItem('pf-camera-settings');
+    state.settings = saved ? { ...defaults, ...JSON.parse(saved) } : { ...defaults };
+  } catch (error) {
+    console.error('Unable to load camera settings:', error);
+    state.settings = { ...defaults };
+    alert('Saved settings could not be read. The default settings will be used.');
+  }
   applySettingsToUI();
   applyTheme();
 }
-function saveSettings() { localStorage.setItem('pf-camera-settings', JSON.stringify(state.settings)); }
+function saveSettings() {
+  try {
+    localStorage.setItem('pf-camera-settings', JSON.stringify(state.settings));
+  } catch (error) {
+    console.error('Unable to save camera settings:', error);
+    alert('Settings could not be saved on this device. Check its storage permissions.');
+  }
+}
 function applySettingsToUI() {
   const s = state.settings;
   $('resolutionSelect').value = s.resolution;
@@ -43,6 +57,7 @@ function applySettingsToUI() {
   $('showAnnouncement').checked = s.showAnnouncement;
   $('showMinister').checked = s.showMinister;
   $('themeSelect').value = s.theme;
+  $('gridOverlay').classList.toggle('hidden', !s.grid);
 }
 function applyTheme() {
   const themes = { gold: '#ffcc00', blue: '#0a84ff', purple: '#bf5af2', green: '#30d158' };
@@ -50,6 +65,7 @@ function applyTheme() {
 }
 
 async function startCamera() {
+  if (state.recording) stopRecording();
   stopCamera();
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     alert('Camera is not supported in this browser. Please use Chrome or Safari.');
@@ -74,13 +90,33 @@ async function startCamera() {
     startPreviewLoop();
   } catch (e) {
     console.error(e);
-    alert('Camera access denied or unavailable.\n\nPlease allow camera permission and make sure you are using HTTPS or localhost.');
+    $('emptyState').classList.remove('hidden');
+    const reason = e.name === 'NotAllowedError' ? 'Allow camera permission in your browser settings.' :
+      e.name === 'NotFoundError' ? 'No camera was found on this device.' :
+      'Check camera permission and make sure you are using HTTPS or localhost.';
+    alert(`Camera could not be started. ${reason}`);
   }
 }
 function stopCamera() {
   if (state.animationId) cancelAnimationFrame(state.animationId);
   if (state.stream) state.stream.getTracks().forEach(t => t.stop());
   state.stream = null;
+}
+function drawCameraFrame(ctx, width, height) {
+  const video = $('cameraVideo');
+  const zoom = state.zoom;
+  const sourceWidth = video.videoWidth / zoom;
+  const sourceHeight = video.videoHeight / zoom;
+  const sourceX = (video.videoWidth - sourceWidth) / 2;
+  const sourceY = (video.videoHeight - sourceHeight) / 2;
+  const mirror = state.settings.facing === 'user' && state.settings.mirror;
+  ctx.save();
+  if (mirror) {
+    ctx.translate(width, 0);
+    ctx.scale(-1, 1);
+  }
+  ctx.drawImage(video, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, width, height);
+  ctx.restore();
 }
 function startPreviewLoop() {
   const canvas = $('previewCanvas');
@@ -90,16 +126,7 @@ function startPreviewLoop() {
     if (!video.videoWidth) { state.animationId = requestAnimationFrame(draw); return; }
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-    const mirror = state.settings.facing === 'user' && state.settings.mirror;
-    const z = state.zoom;
-    const sw = canvas.width / z;
-    const sh = canvas.height / z;
-    const sx = (canvas.width - sw) / 2;
-    const sy = (canvas.height - sh) / 2;
-    ctx.save();
-    if (mirror) { ctx.translate(canvas.width, 0); ctx.scale(-1, 1); }
-    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
-    ctx.restore();
+    drawCameraFrame(ctx, canvas.width, canvas.height);
     drawOverlays(ctx, canvas.width, canvas.height);
     state.animationId = requestAnimationFrame(draw);
   }
@@ -140,9 +167,24 @@ function drawLogo(ctx, img, x, y, size) {
 }
 
 async function capturePhoto() {
+  if (!state.stream || $('cameraVideo').readyState < 2) {
+    alert('Start the camera before taking a photo.');
+    return;
+  }
   const t = parseInt(state.settings.timer, 10);
   if (t > 0) await runCountdown(t);
-  openEditor($('previewCanvas').toDataURL('image/png'));
+  const source = document.createElement('canvas');
+  const video = $('cameraVideo');
+  source.width = video.videoWidth;
+  source.height = video.videoHeight;
+  drawCameraFrame(source.getContext('2d'), source.width, source.height);
+  source.toBlob(blob => {
+    if (!blob) {
+      alert('The photo could not be captured. Please try again.');
+      return;
+    }
+    openEditor(URL.createObjectURL(blob));
+  }, 'image/png');
 }
 function runCountdown(sec) {
   return new Promise(res => {
@@ -159,34 +201,73 @@ function runCountdown(sec) {
 }
 function toggleVideo() { state.recording ? stopRecording() : startRecording(); }
 function startRecording() {
-  const stream = $('previewCanvas').captureStream(30);
-  state.recordedChunks = [];
-  state.mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
-  state.mediaRecorder.ondataavailable = e => { if (e.data.size) state.recordedChunks.push(e.data); };
-  state.mediaRecorder.onstop = () => {
-    const url = URL.createObjectURL(new Blob(state.recordedChunks, { type: 'video/webm' }));
-    addCapture(url, 'video');
-    downloadFile(url, `powerflow-${Date.now()}.webm`);
-  };
-  state.mediaRecorder.start();
-  state.recording = true;
-  $('shutterBtn').classList.add('recording');
-  $('recordTimer').classList.remove('hidden');
-  startRecordTimer();
+  if (!state.stream) {
+    alert('Start the camera before recording a video.');
+    return;
+  }
+  const canvas = $('previewCanvas');
+  if (!canvas.captureStream || !window.MediaRecorder) {
+    alert('Video recording is not supported in this browser.');
+    return;
+  }
+  const candidates = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+  const mimeType = MediaRecorder.isTypeSupported
+    ? candidates.find(type => MediaRecorder.isTypeSupported(type))
+    : undefined;
+  try {
+    const stream = canvas.captureStream(30);
+    state.recordedChunks = [];
+    state.mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    state.mediaRecorder.ondataavailable = event => {
+      if (event.data.size) state.recordedChunks.push(event.data);
+    };
+    state.mediaRecorder.onerror = event => {
+      console.error('Video recording failed:', event.error);
+      alert('Video recording stopped because of a browser error.');
+      stopRecording();
+    };
+    state.mediaRecorder.onstop = () => {
+      stream.getTracks().forEach(track => track.stop());
+      if (!state.recordedChunks.length) {
+        alert('No video data was recorded. Please try again.');
+        return;
+      }
+      const type = state.recordedChunks[0].type || mimeType || 'video/webm';
+      const extension = type.includes('mp4') ? 'mp4' : 'webm';
+      const url = URL.createObjectURL(new Blob(state.recordedChunks, { type }));
+      addCapture(url, 'video');
+      downloadFile(url, `powerflow-${Date.now()}.${extension}`);
+    };
+    state.mediaRecorder.start();
+    state.recording = true;
+    $('shutterBtn').classList.add('recording');
+    $('recordTimer').classList.remove('hidden');
+    startRecordTimer();
+  } catch (error) {
+    console.error('Unable to start video recording:', error);
+    alert('Video recording could not be started. Try another browser or camera mode.');
+  }
 }
 function stopRecording() {
   if (state.mediaRecorder && state.recording) {
-    state.mediaRecorder.stop();
+    if (state.mediaRecorder.state !== 'inactive') state.mediaRecorder.stop();
     state.recording = false;
     $('shutterBtn').classList.remove('recording');
     $('recordTimer').classList.add('hidden');
+    if (state.recordTimerId) clearInterval(state.recordTimerId);
+    state.recordTimerId = null;
   }
 }
 function startRecordTimer() {
   let s = 0;
   const el = $('recordTimer');
-  const iv = setInterval(() => {
-    if (!state.recording) { clearInterval(iv); return; }
+  if (state.recordTimerId) clearInterval(state.recordTimerId);
+  state.recordTimerId = setInterval(() => {
+    if (!state.recording) {
+      clearInterval(state.recordTimerId);
+      state.recordTimerId = null;
+      return;
+    }
     s++;
     el.textContent = `● ${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
   }, 1000);
@@ -194,7 +275,7 @@ function startRecordTimer() {
 
 let editorImage = null, currentFilter = 'none', editState = {
   brightness: 100, contrast: 100, saturation: 100, warmth: 0, vignette: 0,
-  rotation: 0, cropRatio: 'original',
+  rotation: 0, cropRatio: 'original', flipHorizontal: false, quality: 90,
   showAnn: true, showMin: true, annSize: 15, minSize: 14
 };
 
@@ -202,13 +283,23 @@ function openEditor(dataUrl) {
   const img = new Image();
   img.onload = () => {
     editorImage = img;
-    editState = { brightness: 100, contrast: 100, saturation: 100, warmth: 0, vignette: 0, rotation: 0, cropRatio: 'original', showAnn: true, showMin: true, annSize: 15, minSize: 14 };
+    if (img.src.startsWith('blob:')) URL.revokeObjectURL(img.src);
+    editState = {
+      brightness: 100, contrast: 100, saturation: 100, warmth: 0, vignette: 0,
+      rotation: 0, cropRatio: 'original', flipHorizontal: false, quality: 90,
+      showAnn: state.settings.showAnnouncement, showMin: state.settings.showMinister,
+      annSize: state.settings.textSize, minSize: Math.max(10, state.settings.textSize - 1)
+    };
     resetEditorSliders();
     const c = $('editorCanvas');
     c.width = img.width;
     c.height = img.height;
     applyEditorFilters();
     $('editorView').classList.remove('hidden');
+  };
+  img.onerror = () => {
+    if (img.src.startsWith('blob:')) URL.revokeObjectURL(img.src);
+    alert('The captured photo could not be opened for editing.');
   };
   img.src = dataUrl;
 }
@@ -219,12 +310,18 @@ function resetEditorSliders() {
   $('satSlider').value = 100; $('satOut').textContent = '100%';
   $('warmSlider').value = 0; $('warmOut').textContent = '0';
   $('vignetteSlider').value = 0; $('vignetteOut').textContent = '0%';
-  $('annSizeSlider').value = 15; $('annSizeOut').textContent = '15';
-  $('minSizeSlider').value = 14; $('minSizeOut').textContent = '14';
-  $('editShowAnn').checked = true;
-  $('editShowMin').checked = true;
+  $('annSizeSlider').value = editState.annSize; $('annSizeOut').textContent = String(editState.annSize);
+  $('minSizeSlider').value = editState.minSize; $('minSizeOut').textContent = String(editState.minSize);
+  $('editShowAnn').checked = editState.showAnn;
+  $('editShowMin').checked = editState.showMin;
+  $('flipHorizontal').checked = false;
+  $('qualitySlider').value = editState.quality;
+  $('qualityOut').textContent = `${editState.quality}%`;
   document.querySelectorAll('.filter-chip').forEach(b => b.classList.remove('active'));
   document.querySelector('.filter-chip[data-filter="none"]').classList.add('active');
+  document.querySelectorAll('.tool-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === 'adjust'));
+  document.querySelectorAll('.tool-panel').forEach(panel => panel.classList.toggle('hidden', panel.id !== 'tab-adjust'));
+  document.querySelectorAll('.crop-btn').forEach(b => b.classList.toggle('active', b.dataset.ratio === 'original'));
   currentFilter = 'none';
 }
 
@@ -257,6 +354,7 @@ function applyEditorFilters() {
   ctx.save();
   ctx.translate(c.width / 2, c.height / 2);
   ctx.rotate(rad);
+  if (editState.flipHorizontal) ctx.scale(-1, 1);
 
   const b = editState.brightness / 100;
   const ct = editState.contrast / 100;
@@ -276,9 +374,7 @@ function applyEditorFilters() {
   if (currentFilter === 'cinematic') filter += ' contrast(1.15) saturate(0.9) brightness(0.95)';
 
   ctx.filter = filter;
-  const drawW = isSide ? destH : destW;
-  const drawH = isSide ? destW : destH;
-  ctx.drawImage(editorImage, (srcW - destW) / 2, (srcH - destH) / 2, destW, destH, -drawW / 2, -drawH / 2, drawW, drawH);
+  ctx.drawImage(editorImage, (srcW - destW) / 2, (srcH - destH) / 2, destW, destH, -destW / 2, -destH / 2, destW, destH);
   ctx.restore();
   ctx.filter = 'none';
 
@@ -291,15 +387,23 @@ function applyEditorFilters() {
     ctx.fillRect(0, 0, c.width, c.height);
   }
 
-  // Custom text overlays for editor
+  // Apply watermarks once here so they remain editable and do not duplicate.
   const s = state.settings;
+  if (s.showLogos) {
+    const logoSize = (s.logoSize / 100) * Math.min(c.width, c.height) * 0.55;
+    if (state.logos.left) drawLogo(ctx, state.logos.left, 20, 20, logoSize);
+    if (state.logos.right) drawLogo(ctx, state.logos.right, c.width - logoSize - 20, 20, logoSize);
+    if (state.logos.bottom) drawLogo(ctx, state.logos.bottom, (c.width - logoSize) / 2, c.height - logoSize - 80, logoSize);
+  }
   if (editState.showAnn && s.announcement) {
     ctx.fillStyle = s.bannerColor;
     ctx.fillRect(0, c.height - 58, c.width, 40);
     ctx.fillStyle = s.textColor;
     ctx.font = `700 ${editState.annSize}px system-ui`;
     ctx.textBaseline = 'middle';
-    ctx.fillText(s.announcement, 16, c.height - 38);
+    const announcement = s.announcement;
+    const maxWidth = Math.max(0, c.width - 32);
+    ctx.fillText(announcement, 16, c.height - 38, maxWidth);
   }
   if (editState.showMin && s.minister) {
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
@@ -307,15 +411,23 @@ function applyEditorFilters() {
     ctx.fillStyle = s.textColor;
     ctx.font = `600 ${editState.minSize}px system-ui`;
     ctx.textAlign = 'center';
-    ctx.fillText(s.minister, c.width / 2, c.height - 93);
+    ctx.fillText(s.minister, c.width / 2, c.height - 93, Math.max(0, c.width - 32));
     ctx.textAlign = 'left';
   }
 }
 function saveEdited() {
-  const url = $('editorCanvas').toDataURL('image/png');
-  addCapture(url, 'photo');
-  downloadFile(url, `powerflow-${Date.now()}.png`);
-  $('editorView').classList.add('hidden');
+  const format = state.settings.photoFormat === 'jpeg' ? 'image/jpeg' : 'image/png';
+  const extension = format === 'image/jpeg' ? 'jpg' : 'png';
+  $('editorCanvas').toBlob(blob => {
+    if (!blob) {
+      alert('The edited photo could not be exported. Try a smaller crop or another format.');
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    addCapture(url, 'photo');
+    downloadFile(url, `powerflow-${Date.now()}.${extension}`);
+    $('editorView').classList.add('hidden');
+  }, format, editState.quality / 100);
 }
 function addCapture(url, type) {
   state.captures.unshift({ url, type });
@@ -335,6 +447,24 @@ function downloadFile(url, name) {
 }
 
 function bindEvents() {
+  let installPrompt = null;
+  window.addEventListener('beforeinstallprompt', event => {
+    event.preventDefault();
+    installPrompt = event;
+    $('installBtn').classList.remove('hidden');
+  });
+  $('installBtn').onclick = async () => {
+    if (!installPrompt) return;
+    try {
+      await installPrompt.prompt();
+      await installPrompt.userChoice;
+      installPrompt = null;
+      $('installBtn').classList.add('hidden');
+    } catch (error) {
+      console.error('Unable to install the camera app:', error);
+      alert('The app could not be installed from this browser. Use its menu to install or add it to your home screen.');
+    }
+  };
   $('startCameraBtn').onclick = startCamera;
   $('settingsBtn').onclick = () => $('settingsSheet').classList.add('open');
   $('closeSettingsBtn').onclick = () => $('settingsSheet').classList.remove('open');
@@ -354,7 +484,8 @@ function bindEvents() {
   $('zoomOutBtn').onclick = () => setZoom(state.zoom - 0.2);
   document.querySelectorAll('.mode-btn').forEach(btn => {
     btn.onclick = () => {
-      document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+    if (state.recording && btn.dataset.mode !== 'video') stopRecording();
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       state.mode = btn.dataset.mode;
       $('modeBadge').textContent = state.mode.toUpperCase();
@@ -375,13 +506,23 @@ function bindEvents() {
     });
   });
   $('saveSettingsBtn').onclick = () => { saveSettings(); $('settingsSheet').classList.remove('open'); };
-  $('resetSettingsBtn').onclick = () => { state.settings = {...defaults}; applySettingsToUI(); applyTheme(); saveSettings(); };
+  $('resetSettingsBtn').onclick = () => {
+    state.settings = { ...defaults };
+    applySettingsToUI();
+    applyTheme();
+    saveSettings();
+    if (state.stream) startCamera();
+  };
   ['logoLeft','logoRight','logoBottom'].forEach(id => {
     $(id).onchange = e => {
       const f = e.target.files[0];
       if (!f) return;
       const img = new Image();
-      img.onload = () => { state.logos[id.replace('logo','').toLowerCase()] = img; };
+      img.onload = () => { state.logos[id.replace('logo','').toLowerCase()] = img; URL.revokeObjectURL(img.src); };
+      img.onerror = () => {
+        URL.revokeObjectURL(img.src);
+        alert('That logo image could not be opened. Please choose another image.');
+      };
       img.src = URL.createObjectURL(f);
     };
   });
@@ -407,6 +548,25 @@ function bindEvents() {
   });
   $('editShowAnn').onchange = () => { editState.showAnn = $('editShowAnn').checked; applyEditorFilters(); };
   $('editShowMin').onchange = () => { editState.showMin = $('editShowMin').checked; applyEditorFilters(); };
+  $('flipHorizontal').onchange = () => {
+    editState.flipHorizontal = $('flipHorizontal').checked;
+    applyEditorFilters();
+  };
+  $('qualitySlider').oninput = () => {
+    editState.quality = Number($('qualitySlider').value);
+    $('qualityOut').textContent = `${editState.quality}%`;
+  };
+  $('resetEditBtn').onclick = () => {
+    if (!editorImage) return;
+    editState = {
+      brightness: 100, contrast: 100, saturation: 100, warmth: 0, vignette: 0,
+      rotation: 0, cropRatio: 'original', flipHorizontal: false, quality: 90,
+      showAnn: state.settings.showAnnouncement, showMin: state.settings.showMinister,
+      annSize: state.settings.textSize, minSize: Math.max(10, state.settings.textSize - 1)
+    };
+    resetEditorSliders();
+    applyEditorFilters();
+  };
 
   // Tabs
   document.querySelectorAll('.tool-tab').forEach(tab => {

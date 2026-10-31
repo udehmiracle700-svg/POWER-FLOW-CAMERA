@@ -4,29 +4,21 @@
 - `index.html` — main page
 - `style.css` — styling
 - `script.js` — camera, overlays, recording, and editing logic
+- `manifest.webmanifest`, `sw.js`, and `camera-icon-*.png` — install and offline support
 
 ## Deploying to Vercel
 The app is inside `powerflow-camera/powerflow-camera16`, while the repository root is one level above it. Keep Vercel's **Root Directory** set to the repository root; the root `vercel.json` routes the site and its assets to this folder.
 
-## Important: Camera will not work if you open the file directly
-Camera access requires **HTTPS** or **localhost**.
+## Install and offline use
+Deploy the site to HTTPS, then use the browser's **Install app** action (or **Add to Home Screen** on iOS). The service worker caches the app shell and static assets after the first visit so the interface can reopen offline.
 
-Do **not** double-click the HTML file. Instead:
-1. Open the folder in Visual Studio Code
-2. Install the **Live Server** extension
-3. Right-click `index.html` → **Open with Live Server**
-4. Allow camera permission
+Camera access still requires **HTTPS** or **localhost**, and the browser must grant camera permission. Offline use does not make camera access available in browsers that block the camera.
 
-## How to use editing
-1. Start the camera (must be on localhost or HTTPS)
-2. Stay in **PHOTO** mode
-3. Press the white shutter button
-4. The Edit screen appears automatically with filters and sliders
-5. Tap **Save** to download the edited photo
+For local development, open the project in Visual Studio Code and use Live Server rather than opening `index.html` directly.
 
-Settings and gallery are hidden until you tap the gear icon or the gallery thumbnail.
+## Camera and editing
+Start the camera and grant permission. The mode selector switches between photos and video; the gear and gallery controls open their own sheets. Photos open in the editor, where Adjust, Crop, Text, and More tools stay grouped under their selected tab. Export format and quality are configurable, and videos are saved in the browser-supported recording format (normally WebM).
 
 ## Notes
-- Videos are saved as WebM.
-- Overlays (logos, announcement, minister name) are burned into both photos and videos.
-- Settings are saved on the device.
+- Announcement, minister, and uploaded logos are applied to captured media.
+- Settings are saved in browser storage. Captures and uploaded logos remain in memory for the current page session.

@@ -266,3 +266,13 @@ textarea { min-height: 76px; resize: vertical; }
   font-size: 13px; font-weight: 600;
 }
 .crop-btn.active { background: var(--accent); color: #000; }
+.editor-canvas-wrap { min-height: 0; }
+.editor-tools { max-height: 44vh; overflow-y: auto; overscroll-behavior: contain; }
+.icon-btn:focus-visible, .side-btn:focus-visible, .mode-btn:focus-visible,
+.tool-tab:focus-visible, .filter-chip:focus-visible, .done-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+@media (display-mode: standalone) {
+  #installBtn { display: none; }
+}
