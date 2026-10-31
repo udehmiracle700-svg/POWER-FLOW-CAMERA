@@ -5,6 +5,9 @@
 - `style.css` — styling
 - `script.js` — camera, overlays, recording, and editing logic
 
+## Deploying to Vercel
+The app is inside `powerflow-camera/powerflow-camera16`, while the repository root is one level above it. Keep Vercel's **Root Directory** set to the repository root; the root `vercel.json` routes the site and its assets to this folder.
+
 ## Important: Camera will not work if you open the file directly
 Camera access requires **HTTPS** or **localhost**.
 

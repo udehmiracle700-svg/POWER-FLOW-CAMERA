@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/powerflow-camera/powerflow-camera16/$1"
+    }
+  ]
+}
